@@ -1,0 +1,9 @@
+services:
+  mysql-db:
+    image: mysql:8.0
+    container_name: medicacao_mysql
+    environment:
+      MYSQL_DATABASE: medicacao_db
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"

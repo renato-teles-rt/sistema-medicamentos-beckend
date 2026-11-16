@@ -19,19 +19,29 @@ public class AuthVinculoService {
     @Autowired
     private VinculoFamiliarRepository vinculoFamiliarRepository;
 
-    // 1. Login ou Cadastro Automático (Google SSO)
+    // 1. Login ou Cadastro Automático (Google SSO) exigindo Nome + Sobrenome e E-mail válido
     public Usuario autenticarOuCadastrarGoogle(String nome, String email, String fotoUrl, String tipoPerfil) {
-        Optional<Usuario> usuarioExistente = usuarioRepository.findByEmail(email);
+        if (nome == null || !nome.trim().matches("^[A-Za-zÀ-ÖØ-öø-ÿ]{2,}(?:\\s+[A-Za-zÀ-ÖØ-öø-ÿ]{2,})+$")) {
+            throw new RuntimeException("Informe seu Nome e Sobrenome completos utilizando apenas letras.");
+        }
+
+        if (email == null || !email.trim().toLowerCase().matches("^(?=.*[a-z])[a-z0-9._-]+@[a-z0-9.-]+\\.[a-z]{2,}$")) {
+            throw new RuntimeException("Informe um e-mail válido contendo letras (ex: nome@gmail.com).");
+        }
+
+        // Normaliza múltiplos espaços internos para um único espaço
+        String nomeLimpo = nome.trim().replaceAll("\\s+", " ");
+        String emailLimpo = email.trim().toLowerCase();
+
+        Optional<Usuario> usuarioExistente = usuarioRepository.findByEmail(emailLimpo);
 
         if (usuarioExistente.isPresent()) {
-            // Se o usuário já existe, apenas retorna os dados dele
             return usuarioExistente.get();
         }
 
-        // Se é o primeiro acesso, cria um novo usuário (o código de 6 dígitos é gerado sozinho)
         Usuario novoUsuario = new Usuario();
-        novoUsuario.setNome(nome);
-        novoUsuario.setEmail(email);
+        novoUsuario.setNome(nomeLimpo);
+        novoUsuario.setEmail(emailLimpo);
         novoUsuario.setFotoUrl(fotoUrl);
         novoUsuario.setTipoPerfil(tipoPerfil != null ? tipoPerfil.toUpperCase() : "PACIENTE");
 
@@ -40,7 +50,11 @@ public class AuthVinculoService {
 
     // 2. Recuperação de Perfil pelo E-mail
     public Usuario recuperarPerfilPorEmail(String email) {
-        return usuarioRepository.findByEmail(email)
+        if (email == null || !email.trim().toLowerCase().matches("^(?=.*[a-z])[a-z0-9._-]+@[a-z0-9.-]+\\.[a-z]{2,}$")) {
+            throw new RuntimeException("Informe um e-mail válido contendo letras.");
+        }
+
+        return usuarioRepository.findByEmail(email.trim().toLowerCase())
                 .orElseThrow(() -> new RuntimeException("Nenhum perfil encontrado com este e-mail."));
     }
 
@@ -56,7 +70,6 @@ public class AuthVinculoService {
             throw new RuntimeException("Você não pode vincular o seu próprio perfil a si mesmo.");
         }
 
-        // Verifica se o vínculo já existe para não duplicar
         Optional<VinculoFamiliar> vinculoExistente = vinculoFamiliarRepository
                 .findByCuidadorIdAndPacienteId(cuidador.getId(), paciente.getId());
 

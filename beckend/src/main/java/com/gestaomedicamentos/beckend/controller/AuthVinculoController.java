@@ -3,20 +3,18 @@ package com.gestaomedicamentos.beckend.controller;
 import com.gestaomedicamentos.beckend.model.Usuario;
 import com.gestaomedicamentos.beckend.model.VinculoFamiliar;
 import com.gestaomedicamentos.beckend.service.AuthVinculoService;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "*")
 public class AuthVinculoController {
 
-    @Autowired
-    private AuthVinculoService authVinculoService;
+    @Autowired private AuthVinculoService authVinculoService;
 
     // 1. Rota de Login / Cadastro com Google: POST http://localhost:8080/api/auth/google
     @PostMapping("/google")
@@ -28,10 +26,13 @@ public class AuthVinculoController {
             String tipoPerfil = dados.get("tipoPerfil");
 
             if (nome == null || email == null) {
-                return ResponseEntity.badRequest().body(Map.of("erro", "Nome e e-mail são obrigatórios."));
+                return ResponseEntity.badRequest()
+                        .body(Map.of("erro", "Nome e e-mail são obrigatórios."));
             }
 
-            Usuario usuario = authVinculoService.autenticarOuCadastrarGoogle(nome, email, fotoUrl, tipoPerfil);
+            Usuario usuario =
+                    authVinculoService.autenticarOuCadastrarGoogle(
+                            nome, email, fotoUrl, tipoPerfil);
             return ResponseEntity.ok(usuario);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
@@ -63,15 +64,29 @@ public class AuthVinculoController {
         }
     }
 
-    // 4. Listar Pacientes de um Cuidador: GET http://localhost:8080/api/auth/cuidador/{cuidadorId}/pacientes
+    // 4. Listar Pacientes de um Cuidador: GET
+    // http://localhost:8080/api/auth/cuidador/{cuidadorId}/pacientes
     @GetMapping("/cuidador/{cuidadorId}/pacientes")
     public ResponseEntity<List<VinculoFamiliar>> listarPacientes(@PathVariable Long cuidadorId) {
         return ResponseEntity.ok(authVinculoService.listarPacientesDoCuidador(cuidadorId));
     }
 
-    // 5. Listar Cuidadores de um Paciente: GET http://localhost:8080/api/auth/paciente/{pacienteId}/cuidadores
+    // 5. Listar Cuidadores de um Paciente: GET
+    // http://localhost:8080/api/auth/paciente/{pacienteId}/cuidadores
     @GetMapping("/paciente/{pacienteId}/cuidadores")
     public ResponseEntity<List<VinculoFamiliar>> listarCuidadores(@PathVariable Long pacienteId) {
         return ResponseEntity.ok(authVinculoService.listarCuidadoresDoPaciente(pacienteId));
+    }
+
+    @PostMapping("/google-token")
+    public ResponseEntity<?> loginComGoogleToken(@RequestBody Map<String, String> dados) {
+        try {
+            Usuario usuario =
+                    authVinculoService.autenticarComGoogleToken(
+                            dados.get("idToken"), dados.get("tipoPerfil"));
+            return ResponseEntity.ok(usuario);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+        }
     }
 }

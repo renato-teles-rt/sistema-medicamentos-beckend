@@ -40,8 +40,7 @@ public class Usuario {
     }
 
     // Construtor vazio obrigatório para o Hibernate/JPA
-    public Usuario() {
-    }
+    public Usuario() {}
 
     // Getters e Setters
     public Long getId() {

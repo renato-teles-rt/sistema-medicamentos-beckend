@@ -6,8 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class BeckendApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(BeckendApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(BeckendApplication.class, args);
+    }
 }

@@ -36,8 +36,7 @@ public class VinculoFamiliar {
     }
 
     // Construtor vazio obrigatório para o Hibernate/JPA
-    public VinculoFamiliar() {
-    }
+    public VinculoFamiliar() {}
 
     // Getters e Setters
     public Long getId() {

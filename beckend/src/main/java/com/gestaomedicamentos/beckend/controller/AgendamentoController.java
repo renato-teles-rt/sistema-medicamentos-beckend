@@ -3,6 +3,7 @@ package com.gestaomedicamentos.beckend.controller;
 import com.gestaomedicamentos.beckend.model.Agendamento;
 import com.gestaomedicamentos.beckend.service.AgendamentoService;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -40,18 +42,39 @@ public class AgendamentoController {
         return ResponseEntity.ok(agendamento);
     }
 
-    // POST /api/agendamentos -> Cria um novo horário de medicação
+    // POST /api/agendamentos -> Cria horário via App/Web validando conflito (RN03/RN09) e sincronizando Google Agenda (RNF03/RN10)
     @PostMapping
-    public ResponseEntity<Agendamento> criar(@RequestBody Agendamento agendamento) {
-        Agendamento salvo = agendamentoService.criarAgendamento(agendamento);
-        return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
+    public ResponseEntity<?> criar(
+            @RequestBody Agendamento agendamento,
+            @RequestHeader(value = "X-Google-Token", required = false) String googleToken) {
+        try {
+            Agendamento salvo = agendamentoService.criarAgendamento(agendamento, googleToken);
+            return ResponseEntity.status(HttpStatus.CREATED).body(salvo);
+        } catch (IllegalStateException conflito) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("erro", conflito.getMessage()));
+        } catch (IllegalArgumentException invalido) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", invalido.getMessage()));
+        }
     }
 
-    // PUT /api/agendamentos/{id} -> Atualiza nome, dosagem ou horário de um agendamento
+    // PUT /api/agendamentos/{id} -> Atualiza horário via App/Web validando conflito (RN03/RN09) e sincronizando Google Agenda (RNF03/RN10)
     @PutMapping("/{id}")
-    public ResponseEntity<Agendamento> atualizar(@PathVariable Long id, @RequestBody Agendamento dadosAtualizados) {
-        Agendamento atualizado = agendamentoService.atualizarAgendamento(id, dadosAtualizados);
-        return ResponseEntity.ok(atualizado);
+    public ResponseEntity<?> atualizar(
+            @PathVariable Long id,
+            @RequestBody Agendamento dadosAtualizados,
+            @RequestHeader(value = "X-Google-Token", required = false) String googleToken) {
+        try {
+            Agendamento atualizado = agendamentoService.atualizarAgendamento(id, dadosAtualizados, googleToken);
+            return ResponseEntity.ok(atualizado);
+        } catch (IllegalStateException conflito) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("erro", conflito.getMessage()));
+        } catch (IllegalArgumentException invalido) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", invalido.getMessage()));
+        }
     }
 
     // DELETE /api/agendamentos/{id} -> Desativa o agendamento sem perder o histórico

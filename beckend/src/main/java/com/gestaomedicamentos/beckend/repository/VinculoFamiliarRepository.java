@@ -20,4 +20,7 @@ public interface VinculoFamiliarRepository extends JpaRepository<VinculoFamiliar
 
     // Verifica se já existe um vínculo entre esse cuidador e esse paciente para não duplicar
     Optional<VinculoFamiliar> findByCuidadorIdAndPacienteId(Long cuidadorId, Long pacienteId);
+
+    // Verifica se existe vínculo ativo entre cuidador e paciente (RNF06: isolamento por vínculo)
+    boolean existsByCuidadorIdAndPacienteIdAndAtivoTrue(Long cuidadorId, Long pacienteId);
 }

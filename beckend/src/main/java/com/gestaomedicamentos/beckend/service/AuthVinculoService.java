@@ -13,8 +13,10 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthVinculoService {
@@ -28,7 +30,6 @@ public class AuthVinculoService {
     @Value("${google.client.id}")
     private String googleClientId;
 
-    // 1. Autenticação Real com Token Oficial do Google (Mobile Flutter / React OAuth)
     @Transactional
     public Usuario autenticarComGoogleToken(String idTokenString, String tipoPerfil) {
         if (idTokenString == null || idTokenString.trim().isEmpty()) {
@@ -64,7 +65,6 @@ public class AuthVinculoService {
             Optional<Usuario> usuarioExistente = usuarioRepository.findByEmail(emailLimpo);
             if (usuarioExistente.isPresent()) {
                 Usuario existente = usuarioExistente.get();
-                // RN04: Impede que o mesmo e-mail opere com perfis conflitantes sem aviso
                 if (tipoPerfil != null
                         && !tipoPerfil.trim().isEmpty()
                         && !existente.getTipoPerfil().equalsIgnoreCase(perfilDesejado)) {
@@ -89,7 +89,6 @@ public class AuthVinculoService {
         }
     }
 
-    // 2. Login ou Cadastro Automático (Modo Formulário/Fallback)
     @Transactional
     public Usuario autenticarOuCadastrarGoogle(
             String nome, String email, String fotoUrl, String tipoPerfil) {
@@ -118,7 +117,6 @@ public class AuthVinculoService {
 
         if (usuarioExistente.isPresent()) {
             Usuario existente = usuarioExistente.get();
-            // RN04: Garante unicidade de conta por e-mail sem troca silenciosa de perfil
             if (tipoPerfil != null
                     && !tipoPerfil.trim().isEmpty()
                     && !existente.getTipoPerfil().equalsIgnoreCase(perfilDesejado)) {
@@ -139,7 +137,6 @@ public class AuthVinculoService {
         return usuarioRepository.save(novoUsuario);
     }
 
-    // 3. Recuperação de Perfil pelo E-mail
     public Usuario recuperarPerfilPorEmail(String email) {
         if (email == null
                 || !email.trim()
@@ -154,7 +151,6 @@ public class AuthVinculoService {
                         () -> new RuntimeException("Nenhum perfil encontrado com este e-mail."));
     }
 
-    // 4. Criar Vínculo Familiar (RN01: de 0 a no máximo 2 cuidadores ativos simultaneamente)
     @Transactional
     public VinculoFamiliar criarVinculo(Long cuidadorId, String codigoVinculoPaciente) {
         if (codigoVinculoPaciente == null || codigoVinculoPaciente.trim().length() != 6) {
@@ -197,7 +193,6 @@ public class AuthVinculoService {
                 throw new RuntimeException("Você já está vinculado(a) a este paciente.");
             }
 
-            // Se estava inativo e quer reativar, valida o limite de 2 cuidadores ativos (RN01)
             long totalCuidadoresAtivos =
                     vinculoFamiliarRepository.countByPacienteIdAndAtivoTrue(paciente.getId());
             if (totalCuidadoresAtivos >= LIMITE_MAXIMO_CUIDADORES) {
@@ -211,7 +206,6 @@ public class AuthVinculoService {
             return vinculoFamiliarRepository.save(vinculo);
         }
 
-        // RN01: Valida antes de criar um novo vínculo se o paciente já tem 2 cuidadores ativos
         long totalCuidadoresAtivos =
                 vinculoFamiliarRepository.countByPacienteIdAndAtivoTrue(paciente.getId());
         if (totalCuidadoresAtivos >= LIMITE_MAXIMO_CUIDADORES) {
@@ -229,25 +223,71 @@ public class AuthVinculoService {
         return vinculoFamiliarRepository.save(novoVinculo);
     }
 
-    // 5. Desvincular Cuidador/Paciente (libera vaga para outro cuidador na RN01)
+    public void validarAcessoCuidador(Long cuidadorId, Long solicitanteId) {
+        if (solicitanteId == null) {
+            return;
+        }
+        if (!cuidadorId.equals(solicitanteId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Acesso negado: você só pode consultar os pacientes do seu próprio perfil.");
+        }
+    }
+
+    public void validarAcessoPaciente(Long pacienteId, Long solicitanteId) {
+        if (solicitanteId == null) {
+            return;
+        }
+        if (pacienteId.equals(solicitanteId)) {
+            return;
+        }
+        boolean possuiVinculoAtivo =
+                vinculoFamiliarRepository.existsByCuidadorIdAndPacienteIdAndAtivoTrue(
+                        solicitanteId, pacienteId);
+        if (!possuiVinculoAtivo) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Acesso negado: sem vínculo familiar ativo com este paciente.");
+        }
+    }
+
     @Transactional
-    public void desvincularFamiliar(Long vinculoId) {
+    public void desvincularFamiliar(Long vinculoId, Long solicitanteId) {
         VinculoFamiliar vinculo =
                 vinculoFamiliarRepository
                         .findById(vinculoId)
                         .orElseThrow(
                                 () -> new RuntimeException("Vínculo familiar não encontrado."));
 
+        if (solicitanteId != null) {
+            Long cuidadorId =
+                    vinculo.getCuidador() != null ? vinculo.getCuidador().getId() : null;
+            Long pacienteId =
+                    vinculo.getPaciente() != null ? vinculo.getPaciente().getId() : null;
+
+            boolean autorizado =
+                    solicitanteId.equals(cuidadorId) || solicitanteId.equals(pacienteId);
+
+            if (!autorizado) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Acesso negado: você não tem permissão para encerrar este vínculo.");
+            }
+        }
+
         vinculo.setAtivo(false);
         vinculoFamiliarRepository.save(vinculo);
     }
 
-    // 6. Listar todos os Pacientes acompanhados por um Cuidador
+    @Transactional
+    public void desvincularFamiliar(Long vinculoId) {
+        desvincularFamiliar(vinculoId, null);
+    }
+
     public List<VinculoFamiliar> listarPacientesDoCuidador(Long cuidadorId) {
         return vinculoFamiliarRepository.findByCuidadorIdAndAtivoTrue(cuidadorId);
     }
 
-    // 7. Listar todos os Cuidadores de um Paciente
     public List<VinculoFamiliar> listarCuidadoresDoPaciente(Long pacienteId) {
         return vinculoFamiliarRepository.findByPacienteIdAndAtivoTrue(pacienteId);
     }

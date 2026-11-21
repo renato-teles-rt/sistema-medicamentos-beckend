@@ -3,11 +3,14 @@ package com.gestaomedicamentos.beckend.controller;
 import com.gestaomedicamentos.beckend.model.Usuario;
 import com.gestaomedicamentos.beckend.model.VinculoFamiliar;
 import com.gestaomedicamentos.beckend.service.AuthVinculoService;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -25,17 +28,18 @@ public class AuthVinculoController {
             String fotoUrl = dados.get("fotoUrl");
             String tipoPerfil = dados.get("tipoPerfil");
 
-            if (nome == null || email == null) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("erro", "Nome e e-mail são obrigatórios."));
+            if (nome == null || nome.isBlank() || email == null || email.isBlank()) {
+                return erroJson(HttpStatus.BAD_REQUEST, "Nome e e-mail são obrigatórios.");
             }
 
             Usuario usuario =
                     authVinculoService.autenticarOuCadastrarGoogle(
                             nome, email, fotoUrl, tipoPerfil);
             return ResponseEntity.ok(usuario);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -45,8 +49,10 @@ public class AuthVinculoController {
         try {
             Usuario usuario = authVinculoService.recuperarPerfilPorEmail(email);
             return ResponseEntity.ok(usuario);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
         } catch (Exception e) {
-            return ResponseEntity.status(404).body(Map.of("erro", e.getMessage()));
+            return erroJson(HttpStatus.NOT_FOUND, e.getMessage());
         }
     }
 
@@ -54,28 +60,59 @@ public class AuthVinculoController {
     @PostMapping("/vincular")
     public ResponseEntity<?> vincularFamiliar(@RequestBody Map<String, Object> dados) {
         try {
+            if (dados.get("cuidadorId") == null || dados.get("codigoVinculo") == null) {
+                return erroJson(
+                        HttpStatus.BAD_REQUEST, "cuidadorId e codigoVinculo são obrigatórios.");
+            }
+
             Long cuidadorId = Long.valueOf(dados.get("cuidadorId").toString());
-            String codigoVinculo = dados.get("codigoVinculo").toString();
+            String codigoVinculo = dados.get("codigoVinculo").toString().trim();
 
             VinculoFamiliar vinculo = authVinculoService.criarVinculo(cuidadorId, codigoVinculo);
             return ResponseEntity.ok(vinculo);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
+        } catch (NumberFormatException e) {
+            return erroJson(HttpStatus.BAD_REQUEST, "cuidadorId inválido.");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
     // 4. Listar Pacientes de um Cuidador: GET
     // http://localhost:8080/api/auth/cuidador/{cuidadorId}/pacientes
     @GetMapping("/cuidador/{cuidadorId}/pacientes")
-    public ResponseEntity<List<VinculoFamiliar>> listarPacientes(@PathVariable Long cuidadorId) {
-        return ResponseEntity.ok(authVinculoService.listarPacientesDoCuidador(cuidadorId));
+    public ResponseEntity<?> listarPacientes(
+            @PathVariable Long cuidadorId,
+            @RequestHeader(value = "X-Usuario-Id", required = false) Long solicitanteId) {
+        try {
+            authVinculoService.validarAcessoCuidador(cuidadorId, solicitanteId);
+            List<VinculoFamiliar> pacientes =
+                    authVinculoService.listarPacientesDoCuidador(cuidadorId);
+            return ResponseEntity.ok(pacientes);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
+        } catch (Exception e) {
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     // 5. Listar Cuidadores de um Paciente: GET
     // http://localhost:8080/api/auth/paciente/{pacienteId}/cuidadores
     @GetMapping("/paciente/{pacienteId}/cuidadores")
-    public ResponseEntity<List<VinculoFamiliar>> listarCuidadores(@PathVariable Long pacienteId) {
-        return ResponseEntity.ok(authVinculoService.listarCuidadoresDoPaciente(pacienteId));
+    public ResponseEntity<?> listarCuidadores(
+            @PathVariable Long pacienteId,
+            @RequestHeader(value = "X-Usuario-Id", required = false) Long solicitanteId) {
+        try {
+            authVinculoService.validarAcessoPaciente(pacienteId, solicitanteId);
+            List<VinculoFamiliar> cuidadores =
+                    authVinculoService.listarCuidadoresDoPaciente(pacienteId);
+            return ResponseEntity.ok(cuidadores);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
+        } catch (Exception e) {
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     @PostMapping("/google-token")
@@ -85,19 +122,44 @@ public class AuthVinculoController {
                     authVinculoService.autenticarComGoogleToken(
                             dados.get("idToken"), dados.get("tipoPerfil"));
             return ResponseEntity.ok(usuario);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
     // 6. Desvincular Cuidador/Paciente: DELETE http://localhost:8080/api/auth/vincular/{vinculoId}
     @DeleteMapping("/vincular/{vinculoId}")
-    public ResponseEntity<?> desvincularFamiliar(@PathVariable Long vinculoId) {
+    public ResponseEntity<?> desvincularFamiliar(
+            @PathVariable Long vinculoId,
+            @RequestHeader(value = "X-Usuario-Id", required = false) Long solicitanteId) {
         try {
-            authVinculoService.desvincularFamiliar(vinculoId);
-            return ResponseEntity.ok(Map.of("mensagem", "Vínculo encerrado com sucesso."));
+            authVinculoService.desvincularFamiliar(vinculoId, solicitanteId);
+            Map<String, String> corpo = new HashMap<>();
+            corpo.put("mensagem", "Vínculo encerrado com sucesso.");
+            return ResponseEntity.ok(corpo);
+        } catch (ResponseStatusException e) {
+            return responderStatus(e);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+            return erroJson(HttpStatus.BAD_REQUEST, e.getMessage());
         }
+    }
+
+    private ResponseEntity<?> responderStatus(ResponseStatusException ex) {
+        String mensagem = ex.getReason() != null ? ex.getReason() : "Operação não permitida.";
+        return ResponseEntity.status(ex.getStatusCode()).body(criarMapaErro(mensagem));
+    }
+
+    private ResponseEntity<?> erroJson(HttpStatus status, String mensagem) {
+        String msgSegura =
+                (mensagem != null && !mensagem.isBlank()) ? mensagem : "Erro na requisição.";
+        return ResponseEntity.status(status).body(criarMapaErro(msgSegura));
+    }
+
+    private Map<String, String> criarMapaErro(String mensagem) {
+        Map<String, String> mapa = new HashMap<>();
+        mapa.put("erro", mensagem);
+        return mapa;
     }
 }

@@ -89,4 +89,15 @@ public class AuthVinculoController {
             return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
         }
     }
+
+    // 6. Desvincular Cuidador/Paciente: DELETE http://localhost:8080/api/auth/vincular/{vinculoId}
+    @DeleteMapping("/vincular/{vinculoId}")
+    public ResponseEntity<?> desvincularFamiliar(@PathVariable Long vinculoId) {
+        try {
+            authVinculoService.desvincularFamiliar(vinculoId);
+            return ResponseEntity.ok(Map.of("mensagem", "Vínculo encerrado com sucesso."));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("erro", e.getMessage()));
+        }
+    }
 }
